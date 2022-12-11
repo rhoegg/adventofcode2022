@@ -3,20 +3,18 @@ package main
 import (
 	"fmt"
 	"math"
-	"math/big"
 	"os"
 	"sort"
 	"strconv"
 	"strings"
 )
 
-var bigZero = big.NewInt(0)
 
-type Operation func(old *big.Int) *big.Int
-type Test func(worryLevel *big.Int) bool
+type Operation func(old int64) int64
+type Test func(worryLevel int64) bool
 
 type Monkey struct {
-	Items []*big.Int
+	Items []int64
 	Inspections int
 	Operation Operation
 	TestFactor int
@@ -38,7 +36,7 @@ func parseMonkeys(filename string) []*Monkey {
 		items := strings.Split(itemsTokens[2], ", ")
 		for _, token := range items {
 			worryLevel, _ := strconv.ParseInt(token, 10, 64)
-			monkey.Items = append(monkey.Items, big.NewInt(worryLevel))
+			monkey.Items = append(monkey.Items, worryLevel)
 		}
 
 		monkey.Operation = parseOperation(lines[2])
@@ -56,31 +54,24 @@ func parseOperation(line string) Operation {
 	relevantParts := strings.Split(strings.TrimPrefix(line, "  Operation: new = old "), " ")
 	if relevantParts[1] == "old" {
 		if relevantParts[0] == "*" {
-			return func(old *big.Int) *big.Int {
-				//fmt.Printf("squaring %s", old.String())
-				old.Mul(old, old)
-				//fmt.Printf(" = %s\n", old.String())
-				return old
+			return func(old int64) int64 {
+				return old * old
 			}
 		} else {
-			return func(old *big.Int) *big.Int {
+			return func(old int64) int64 {
 				//fmt.Printf("doubling %s\n", old.String())
-				return old.Add(old, old)
+				return old + old
 			}
 		}
 	} else {
 		constant, _ := strconv.ParseInt(relevantParts[1], 10, 64)
 		if relevantParts[0] == "*" {
-			return func(old *big.Int) *big.Int {
-				//fmt.Printf("%s * %d", old.String(), constant)
-				old.Mul(old, big.NewInt(constant))
-				//fmt.Printf(" = %s\n", old.String())
-				return old
+			return func(old int64) int64 {
+				return old * constant
 			}
 		} else {
-			return func(old *big.Int) *big.Int {
-				//fmt.Printf("%s + %d\n", old.String(), constant)
-				return old.Add(old, big.NewInt(constant))
+			return func(old int64) int64 {
+				return old + constant
 			}
 		}
 	}
@@ -89,9 +80,8 @@ func parseOperation(line string) Operation {
 func parseTest(line string) (Test, int) {
 	parameter := strings.TrimPrefix(line,"  Test: divisible by ")
 	dividend, _ := strconv.ParseInt(parameter, 10, 64)
-	return func(worryLevel *big.Int) bool {
-		check := new(big.Int).Set(worryLevel)
-		return check.Mod(worryLevel, big.NewInt(dividend)).Cmp(bigZero) == 0
+	return func(worryLevel int64) bool {
+		return worryLevel % dividend == 0
 	}, int(dividend)
 }
 
@@ -123,26 +113,21 @@ func TakeTurn(monkeys []*Monkey, i int, relief bool, round int) []*Monkey {
 		monkeys[i].Inspections += 1
 		//fmt.Printf("inspect item with worry level is %d\n", itemWorryLevel)
 		// operation
-		old := itemWorryLevel.Int64()
+		old := itemWorryLevel
 		itemWorryLevel := monkeys[i].Operation(itemWorryLevel)
-		//fmt.Printf("operation result %s\n", itemWorryLevel.String())
 		//fmt.Printf("Worry level is %d\n", itemWorryLevel)
 		// get bored
 		if relief {
-			itemWorryLevel = itemWorryLevel.Div(itemWorryLevel, big.NewInt(3))
+			itemWorryLevel = itemWorryLevel / 3
 			//fmt.Printf("Bored! Worry level is %d\n", itemWorryLevel)
 		} else {
-			//if itemWorryLevel > lcm && (itemWorryLevel % lcm == 0) {
-			//	itemWorryLevel = itemWorryLevel / lcm
-			//}
-			if big.NewInt(old).Cmp(itemWorryLevel) > 0 {
+			if old > itemWorryLevel {
 				fmt.Printf("Max int64 %d\n", math.MaxInt64)
-				panic(fmt.Sprintf("monkey %d overflow round %d: %d -> %d\n", i, round, old, itemWorryLevel.Int64()))
+				panic(fmt.Sprintf("monkey %d overflow round %d: %d -> %d\n", i, round, old, itemWorryLevel))
 			}
-			bigLcm := big.NewInt(lcm)
-			if itemWorryLevel.Cmp(bigLcm) > 0 {
-				itemWorryLevel.Mod(itemWorryLevel, bigLcm)
-				//fmt.Printf("fixed worry level %s\n", itemWorryLevel.String())
+			if itemWorryLevel > lcm {
+				itemWorryLevel = itemWorryLevel % lcm
+				//fmt.Printf("fixed worry level %d\n", itemWorryLevel)
 			}
 		}
 		// test worry level
