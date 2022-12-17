@@ -10,7 +10,8 @@ func main() {
 	for _, v := range pipeSystem.Valves {
 		fmt.Printf("Valve %s: %d (%v)\n", v.Name, v.FlowRate, v.Tunnels)
 	}
-	waypoints, pressure := pipeSystem.MostPressure("AA", make(map[string]bool), 30)
-	fmt.Printf("Max tunnel pressure = %d at %v\n", pressure, waypoints)
+	pressure := pipeSystem.MostPressureWithElephant([2][]string{{"AA"}, {"AA"}},
+		make(map[string]bool), 25) // one less than minutes for some reason
+	fmt.Printf("Max tunnel pressure = %d\nme: %v\nelephant: %v\n", pressure.pressure, pressure.paths[0], pressure.paths[1])
 }
 
