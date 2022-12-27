@@ -38,7 +38,7 @@ fun inRange(sensors, row) = sensors map
     }) filter ($.rowInRange >= 0)
 
 // TODO: make this a check isVisible (between check) and then reduce
-fun visibleRowSegments(sensors, row) = log(inRange(sensors, row))
+fun visibleRowSegments(sensors, row) = inRange(sensors, row)
     map [$.sensor.x - $.rowInRange, $.sensor.x + $.rowInRange]
     orderBy $[0]
     reduce (segment, priors) -> do {
@@ -57,5 +57,7 @@ fun visibleRowSegments(sensors, row) = log(inRange(sensors, row))
 var sensors = computeRange(parseSensorData(input1))
 var part1Segments = visibleRowSegments(sensors, 2000000)
 ---
-part1Segments map ($[1] - $[0])
-
+{
+    part1: part1Segments,
+    part2: (0 to 4000000)  map {row: $, segments: visibleRowSegments(sensors, $) } filter ($.segments some ($[0] > 0))
+}
