@@ -1,2 +1,6 @@
 input.txt
 .idea
+.calva
+.clj-kondo
+.nrepl-port
+target/
