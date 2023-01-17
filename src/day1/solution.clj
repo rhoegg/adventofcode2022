@@ -15,13 +15,14 @@
 (defn parse-calories
   [path]
   (map parse-elf (parse-elves path))) 
+(defn sum [items] (reduce + items))
 
 (defrecord solution [part1 part2])
 (defn solve
   [path]
-  (def elf-calories (map #(r/fold + %) (parse-calories path)))
-  (->solution
-   (apply max elf-calories)
-   (r/fold + (take 3 (sort > elf-calories)))))
+  (let [elf-calories (map sum (parse-calories path))]
+    (->solution
+     (apply max elf-calories)
+     (r/fold + (take 3 (sort > elf-calories))))))
 (solve "day1/example.txt")
 (solve "day1/input.txt")
