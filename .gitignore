@@ -4,3 +4,4 @@ input.txt
 .clj-kondo
 .nrepl-port
 target/
+.lsp
