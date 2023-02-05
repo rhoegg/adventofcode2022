@@ -5,3 +5,4 @@ input.txt
 .nrepl-port
 target/
 .lsp
+*.clj~
