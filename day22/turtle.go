@@ -80,3 +80,5 @@ func (t *Turtle) Forward(steps int, board []string) {
 	t.Position = nextPosition
 	t.Forward(steps - 1, board)
 }
+
+//func (t *Turtle) ForwardCube()

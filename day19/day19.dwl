@@ -1,5 +1,6 @@
 %dw 2.0
 import * from dw::core::Arrays
+import * from dw::core::Objects
 import * from dw::core::Strings
 output application/json
 
@@ -7,20 +8,26 @@ fun parseBlueprint(line) = do {
     var parts = line splitBy ". "
     ---
     {
-        oreRobot: parts[0] substringAfterLast "costs " substringBefore " ore" then {ore: ($ as Number)},
-        clayRobot: parts[1] substringAfterLast  "costs " substringBefore  " ore" then {ore: ($ as Number)},
-        obsidianRobot: parts[2] substringAfter "costs " splitBy " and " map (
-            $ splitBy " " then $[0] as Number
-        ) then {ore: $[0], clay: $[1]},
-        geodeRobot: parts[3] substringAfter "costs " splitBy " and " map (
-            $ splitBy " " then $[0] as Number
-        ) then {ore: $[0], obsidian: $[1]}
+        number: parts[0] substringAfter "Blueprint " substringBeforeLast ":",
+        costs: {
+            oreRobot: parts[0] substringAfterLast "costs " substringBefore " ore" then {ore: ($ as Number)},
+            clayRobot: parts[1] substringAfterLast  "costs " substringBefore  " ore" then {ore: ($ as Number)},
+            obsidianRobot: parts[2] substringAfter "costs " splitBy " and " map (
+                $ splitBy " " then $[0] as Number
+            ) then {ore: $[0], clay: $[1]},
+            geodeRobot: parts[3] substringAfter "costs " splitBy " and " map (
+                $ splitBy " " then $[0] as Number
+            ) then {ore: $[0], obsidian: $[1]}
+        }
     }
 }
 
-fun runFactory(blueprint, inventory, minutes) = do {
-    var options = choices(blueprint, inventory) map (transaction) -> do {
-        var afterSpend = spendResources(blueprint, inventory, transaction)
+fun inventoryKey(inventory) = inventory pluck ($ as String) joinBy " "
+
+fun runFactory(state, blueprint, inventory, minutes) = do {
+    var cacheKey = (blueprint.number ++ " " ++ inventoryKey(inventory))
+    var options = state[cacheKey] default choices(blueprint, inventory) map (transaction) -> do {
+        var afterSpend = spendResources(inventory, transaction)
         ---
         {
             ore: afterSpend.ore + inventory.oreRobot,
@@ -33,27 +40,44 @@ fun runFactory(blueprint, inventory, minutes) = do {
             geodeRobot: afterSpend.geodeRobot
         }
     }
+    var worthyOptions = if (options some ($.geodeRobot > 0))
+                    options filter ($.geodeRobot == max(options map ($.geodeRobot)))
+                else options filter ($.obsidianRobot == max(options map ($.obsidianRobot)))
+    var nextState = state ++ {
+       (cacheKey) : options
+    }
     ---
-    if (minutes == 1) [options[0]] // doesn't matter
-    else flatten(options map (afterCollection) -> runFactory(blueprint, afterCollection, minutes - 1)) distinctBy $
+    if (minutes == 1) { state: {}, options: [options[0]] } // doesn't matter
+    else worthyOptions reduce (afterCollection, acc = {state: nextState, options: []}) -> do {
+        var optionResult = runFactory(acc.state, blueprint, afterCollection, minutes - 1)
+        var aggregateResult = (acc.options ++ optionResult.options) distinctBy $ 
+        ---
+        {
+            state: optionResult.state,
+            options: aggregateResult
+        }
+    }
 }
 
-fun spendResources(blueprint, inventory, transaction) = do {
-    inventory mapObject ((balance, resource) -> { (resource): balance + (transaction[resource] default 0)})
+fun spendResources(inventory, transaction) = do {
+    inventory mapObject ((balance, resource) -> 
+        { (resource): balance + (transaction[resource] default 0)})
 }
 
 fun choices(blueprint, inventory) =
-    if (afford(blueprint.geodeRobot, inventory))
-        ([spend(blueprint.geodeRobot) ++ {geodeRobot: 1}])
-    else if (afford(blueprint.obsidianRobot, inventory))
-        ([spend(blueprint.obsidianRobot) ++ {obsidianRobot: 1}])
+    if (afford(blueprint.costs.geodeRobot, inventory))
+        ([spend(blueprint.costs.geodeRobot) ++ {geodeRobot: 1}])
+    else if (afford(blueprint.costs.obsidianRobot, inventory))
+        ([spend(blueprint.costs.obsidianRobot) ++ {obsidianRobot: 1}])
+    else if (afford(blueprint.costs.clayRobot, inventory) and (inventory.clayRobot == 0))
+        ([spend(blueprint.costs.clayRobot) ++ {clayRobot: 1}])
     else
         [{}]
         ++ (
-            if (afford(blueprint.clayRobot, inventory) and (inventory.clayRobot < blueprint.obsidianRobot.clay))
-            [spend(blueprint.clayRobot) ++ {clayRobot: 1}] else [])
+            if (afford(blueprint.costs.clayRobot, inventory) and (inventory.clayRobot < blueprint.costs.obsidianRobot.clay))
+            [spend(blueprint.costs.clayRobot) ++ {clayRobot: 1}] else [])
         ++ (
-            if (afford(blueprint.oreRobot, inventory) and (inventory.oreRobot < max(blueprint pluck $.ore))) [spend(blueprint.oreRobot) ++ { oreRobot: 1 }] else [])
+            if (afford(blueprint.costs.oreRobot, inventory) and (inventory.oreRobot < max(blueprint.costs pluck $.ore))) [spend(blueprint.costs.oreRobot) ++ { oreRobot: 1 }] else [])
 
 fun spend(price) =
     price mapObject (price, resource) -> {(resource): -price}
@@ -78,11 +102,7 @@ var startInventory = {
 ---
 {
     // inventory: startInventory,
-    blueprints: blueprints,
-    run: blueprints map (blueprint, i) -> do {
-      var geodes = log(max(runFactory(blueprint, startInventory, 24) map $.geode))
-      ---
-      { geodes: geodes, id: i + 1, qualityLevel: (i + 1) * geodes }
-    }
+    // blueprints: blueprints,
+    run: blueprints map (blueprint) -> log(max(runFactory({}, blueprint, startInventory, 24).options map $.geode))
 }
 

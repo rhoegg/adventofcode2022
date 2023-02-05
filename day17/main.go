@@ -7,30 +7,19 @@ import (
 	"strings"
 )
 
-type Point struct {
-	X, Y int
-}
-type Rock struct {
-	Shape map[Point]bool
-	Number int
-}
-
-func NewRock(rockNumber int) Rock {
-	return Rock{Shape: make(map[Point]bool), Number: rockNumber}
-}
-
 func main() {
 	rocks := parseRockPattern("rocks.txt")
 	jetPattern := parseJetPattern("example.txt")
 	chamber := NewChamber(7, rocks, jetPattern)
-	for i := 0; i < 1000000; i++ {
-		if i % 5000 == 0 {
+	// This times at 5s for 1,000,000
+	for i := 0; i < 5; i++ {
+		if i % 50000 == 0 {
 			log.Printf("Dropped %d", i)
 		}
 		chamber.DropRock()
 	}
 	fmt.Printf("Height: %d\n\n", chamber.Peak())
-	//fmt.Println(chamber.Draw())
+	fmt.Println(chamber.Draw())
 }
 
 func parseJetPattern(filename string) []int {

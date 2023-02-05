@@ -7,6 +7,7 @@ type Chamber struct {
 	nextRock int
 	JetPattern []int
 	nextJet int
+	peak int
 }
 
 func NewChamber(width int, rocks []Rock, jetPattern []int) *Chamber {
@@ -14,18 +15,16 @@ func NewChamber(width int, rocks []Rock, jetPattern []int) *Chamber {
 }
 
 func (c *Chamber) Peak() int {
-	var top int
-	for p := range c.Landed {
-		if p.Y > top {
-			top = p.Y
-		}
-	}
-	return top
+	return c.peak
 }
 
 func (c *Chamber) DropRock() int {
-	// start position
-	position := &Point{X: 2, Y: c.Peak() + 4}
+
+	deltaX := c.JetPattern[c.nextJet] + c.JetPattern[(c.nextJet + 1) % len(c.JetPattern)]
+	// two below start position
+	position := &Point{X: 2 + deltaX, Y: c.Peak() + 2}
+
+	c.nextJet = (c.nextJet + 2) % len(c.JetPattern)
 
 	var landed bool
 	// loop
@@ -54,14 +53,19 @@ func (c *Chamber) Land(rock Rock, position Point) {
 		chamberPoint := Point{X: p.X + position.X, Y: p.Y + position.Y}
 		c.Landed[chamberPoint] = true
 	}
-	if c.Peak() % 10 == 0 {
+	for p := range c.Landed {
+		if p.Y > c.peak {
+			c.peak = p.Y
+		}
+	}
+	if c.Peak() % 15 == 0 {
 		c.PruneLanded()
 	}
 }
 
 func (c *Chamber) PruneLanded() {
 	for p := range c.Landed {
-		if p.Y < c.Peak() - 50 {
+		if p.Y < c.Peak() - 20 {
 			delete(c.Landed, p)
 		}
 	}
@@ -71,6 +75,9 @@ func (c Chamber) Collides(rock Rock, position Point) bool {
 	for p := range rock.Shape {
 		if p.X + position.X < 0 { return true }
 		if p.X + position.X >= c.Width { return true }
+	}
+	if position.Y > c.Peak() {
+		return false
 	}
 	return c.CollidesLanded(rock, position)
 }
@@ -90,8 +97,14 @@ func (c Chamber) CurrentRock() Rock {
 }
 
 func (c Chamber) Draw() string {
+	minY := c.Peak()
+	for p := range c.Landed {
+		if p.Y < minY {
+			minY = p.Y
+		}
+	}
 	canvas := ""
-	for y := c.Peak(); y > 0; y-- {
+	for y := c.Peak(); y > minY; y-- {
 		var line string
 		for x := -1; x <= c.Width + 1; x++ {
 			switch x {

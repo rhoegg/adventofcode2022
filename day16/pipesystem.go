@@ -11,8 +11,9 @@ import (
 
 type PipeSystem struct {
 	Valves map[string]Valve
-	pressureCache map[string]pathPressure
+	pathCache map[string][]string
 	checks10min int
+	cacheHits int64
 }
 
 type Valve struct {
@@ -40,12 +41,8 @@ func NewPipeSystem(filename string) *PipeSystem {
 
 	return &PipeSystem{
 		Valves: valves,
-		pressureCache: make(map[string]pathPressure),
+		pathCache: make(map[string][]string),
 	}
-}
-
-func (ps *PipeSystem) cacheKey(plans [2][]string, minutes int) string {
-	return string(minutes) + ":" + strings.Join(plans[0], "-") + ":" + strings.Join(plans[1], "-")
 }
 
 func (ps *PipeSystem) MostPressure(origin string, visited map[string]bool, minutes int) (waypoints []string, pressure int) {
@@ -92,30 +89,23 @@ func (ps *PipeSystem) MostPressure(origin string, visited map[string]bool, minut
 }
 
 func (ps *PipeSystem) MostPressureWithElephant(plans [2][]string, visited map[string]bool, minutes int) pathPressure {
-	if result, ok := ps.pressureCache[ps.cacheKey(plans, minutes)]; ok {
-		return result
-	}
-
 	if minutes < 0 {
 		panic("took too long")
 	}
 	if minutes == 0 {
 		return pathPressure{paths: plans, pressure: 0}
 	}
-	var potentialPressure int
-	for _, target := range ps.FlowTargets() {
-		potentialPressure += ps.Valves[target].FlowRate * ( minutes - 1 )
-	}
 
+	var tryAllPaths bool = true
 	var newFlowRate int
 	var possiblePlans [2][][]string
 	var maxTunnelPressure pathPressure
 	opens := [2]string{" ", " "}
 	newVisited := make(map[string]bool)
+	for k, _ := range visited {
+		newVisited[k] = true
+	}
 	for _, i := range []int{0, 1} {
-		for k, _ := range visited {
-			newVisited[k] = true
-		}
 		if len(plans[i]) > 1 {
 			possiblePlans[i] = [][]string{plans[i][1:]}
 		} else {
@@ -123,9 +113,21 @@ func (ps *PipeSystem) MostPressureWithElephant(plans [2][]string, visited map[st
 			originValve := ps.Valves[origin]
 			if newVisited[origin] || originValve.FlowRate == 0 {
 				// make new plans
+				goodTargets := make(map[string]bool)
 				for _, target := range ps.FlowTargets() {
 					if ! newVisited[target] && target != origin {
-						p := ps.Path(origin, target)
+						goodTargets[target] = true
+					}
+				}
+				for target := range goodTargets {
+					p := ps.Path(origin, target)
+					var skip bool
+					for _, step := range p[:len(p) - 1] {
+						if goodTargets[step] && ps.Valves[step].FlowRate >= ps.Valves[target].FlowRate {
+							skip = true
+						}
+					}
+					if len(p) < minutes && (tryAllPaths || !skip) {
 						possiblePlans[i] = append(possiblePlans[i], p)
 					}
 				}
@@ -142,13 +144,6 @@ func (ps *PipeSystem) MostPressureWithElephant(plans [2][]string, visited map[st
 		for _, myPlan := range possiblePlans[0] {
 			for _, elephantPlan := range possiblePlans[1] {
 				candidatePlans := [2][]string{myPlan, elephantPlan}
-				// see if we have a shot
-				var maxValve Valve
-				for _, v := range ps.FlowTargets() {
-					if ! newVisited[v] && ps.Valves[v].FlowRate > maxValve.FlowRate {
-						maxValve = ps.Valves[v]
-					}
-				}
 
 				tunnelPressure := ps.MostPressureWithElephant(candidatePlans, newVisited, minutes - 1)
 				if tunnelPressure.pressure > maxTunnelPressure.pressure {
@@ -160,8 +155,10 @@ func (ps *PipeSystem) MostPressureWithElephant(plans [2][]string, visited map[st
 	for _, i := range []int{0,1} {
 		maxTunnelPressure.paths[i] = append([]string{plans[i][0] + opens[i]}, maxTunnelPressure.paths[i]...)
 	}
-	if minutes == 15 {
-		log.Printf("(10branches %d) Finished computing with 15 minutes left: %v", ps.checks10min, maxTunnelPressure.paths)
+	if minutes == 22 {
+		log.Printf("(10s/hits/size %d/%d/%d) Max pressure w/ 22 minutes left (%d): \n%v\n%v",
+			ps.checks10min, ps.cacheHits, len(ps.pathCache),
+			maxTunnelPressure.pressure, maxTunnelPressure.paths[0], maxTunnelPressure.paths[1])
 	}
 	if minutes == 10 {
 		ps.checks10min++
@@ -169,9 +166,8 @@ func (ps *PipeSystem) MostPressureWithElephant(plans [2][]string, visited map[st
 
 	result := pathPressure{
 		paths: maxTunnelPressure.paths,
-		pressure: (newFlowRate * minutes) + maxTunnelPressure.pressure,
+		pressure: (newFlowRate * (minutes - 1)) + maxTunnelPressure.pressure,
 	}
-	ps.pressureCache[ps.cacheKey(result.paths, minutes)] = result
 	return result
 }
 
@@ -185,7 +181,11 @@ func (ps *PipeSystem) FlowTargets() (targets []string) {
 	return targets
 }
 
-func (ps *PipeSystem) Path(origin, destination string) (path []string) {
+func (ps *PipeSystem) Path(origin, destination string) []string {
+	if path, ok := ps.pathCache[origin + "-" + destination]; ok {
+		ps.cacheHits++
+		return path
+	}
 	vh := make(valveHeap, len(ps.Valves[origin].Tunnels))
 	for i, name := range ps.Valves[origin].Tunnels {
 		vh[i] = valveNode{Valve: ps.Valves[name], distance: 1}
@@ -196,7 +196,9 @@ func (ps *PipeSystem) Path(origin, destination string) (path []string) {
 		node := heap.Pop(&vh).(valveNode)
 		if node.Name == destination {
 			// got there
-			return append(node.pathHere, node.Name)
+			path := append(node.pathHere, node.Name)
+			ps.pathCache[origin + "-" + destination] = path
+			return path
 		}
 		if _, ok := visited[node.Name]; ok {
 			continue
