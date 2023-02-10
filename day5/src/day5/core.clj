@@ -55,7 +55,7 @@
              (first (nth line 3))
              (first (nth line 5))))))))
 
-(defn move-step
+(defn move-step-one-at-a-time
   [crates move]
   (let [{count :count, source :source, target :target} move
         cargo (take count (get crates source))]
@@ -65,13 +65,31 @@
      (assoc source (drop count (get crates source)))
      )))
 
-(defn part1
-  [file-name]
+(defn move-step-all-at-once
+  [crates move]
+  (let [{count :count, source :source, target :target} move
+        cargo (take count (get crates source))]
+    (->
+     crates
+     (assoc target (concat cargo (get crates target)))
+     (assoc source (drop count (get crates source)))
+     )))
+
+(defn move-crates
+  [file-name, mover]
   (let [[crates-input moves-input] (load-input file-name)
         crates (parse-crates crates-input)
         moves (parse-moves moves-input)]
     (->>
      moves
-     (reduce move-step crates)
+     (reduce mover crates)
      (vals)
      (map #(first %)))))
+
+(defn part1
+  [file-name]
+  (move-crates file-name move-step-one-at-a-time))
+
+(defn part2
+  [file-name]
+  (move-crates file-name move-step-all-at-once))
