@@ -85,3 +85,14 @@
          (map #(total-dir-size t %))
          (filter #(<= % 100000))
          (apply +))))
+
+(defn part2
+  [file-name]
+  (let [t (build-dir-tree file-name)
+        used-space (total-dir-size t [])
+        required-space (- used-space 40000000)]
+    (->> (:directories t)
+         (keys)
+         (map #(total-dir-size t %))
+         (filter #(>= % required-space))
+         (apply min))))
